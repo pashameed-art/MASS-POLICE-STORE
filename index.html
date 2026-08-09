@@ -39,6 +39,17 @@ select{appearance:none;}
 /* Prevent Android Chrome auto-zoom-triggered scroll jump on focus */
 input, select, textarea { font-size:16px !important; }
 
+/* Bill printing / "Download PDF" — isolate just the invoice card.
+   #printableInvoice is set on the invoice preview card in sales.js. */
+@media print {
+  body * { visibility: hidden; }
+  #printableInvoice, #printableInvoice * { visibility: visible; }
+  #printableInvoice {
+    position: absolute; left: 0; top: 0; width: 100%;
+    box-shadow: none !important; border: none !important;
+  }
+}
+
 </style>
 </head>
 <body>
@@ -1371,7 +1382,7 @@ MUS.Sales = (function () {
           <button onclick="MUS.App.closeModal()" style="background:none;border:none;font-size:18px;">✕</button>
         </div>
         <div style="padding:16px;">
-          <div style="border:1px solid #e0d8c5;border-radius:12px;box-shadow:0 2px 8px rgba(28,43,58,.08);overflow:hidden;padding:20px;color:var(--navy);">
+          <div id="printableInvoice" style="border:1px solid #e0d8c5;border-radius:12px;box-shadow:0 2px 8px rgba(28,43,58,.08);overflow:hidden;padding:20px;color:var(--navy);background:#fff;">
             <div style="text-align:center;border-bottom:3px solid var(--navy);padding-bottom:12px;margin-bottom:12px;">
               <div style="font-size:20px;font-weight:800;">${esc(state.shopInfo.name)}</div>
               ${state.shopInfo.address ? `<div style="font-size:12px;color:#555;margin-top:2px;">${esc(state.shopInfo.address)}</div>` : ""}
@@ -1409,6 +1420,10 @@ MUS.Sales = (function () {
           </div>
         </div>
         <div style="padding:0 16px 16px;">
+          <button onclick="window.print()"
+            style="width:100%;padding:12px;border-radius:10px;border:none;background:var(--navy);color:#fff;font-weight:700;display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:10px;font-size:15px;">
+            📄 Download PDF
+          </button>
           <a href="https://wa.me/?text=${encodeURIComponent(invoiceText(inv))}" target="_blank" rel="noopener noreferrer"
             style="width:100%;padding:12px;border-radius:10px;border:none;background:#25D366;color:#fff;font-weight:700;display:flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;box-sizing:border-box;margin-bottom:10px;font-size:15px;">
             Share on WhatsApp
@@ -2077,7 +2092,8 @@ MUS.App = (function () {
         <div class="card" style="margin-top:18px;">
           <div class="stencil" style="font-size:11px;color:#6b6455;margin-bottom:8px;">Backup & Restore</div>
           <div style="font-size:12px;color:#8a8270;margin-bottom:10px;">Last backup: <b style="color:var(--navy);">${lastBackup}</b></div>
-          <button class="btn-gold" style="margin-bottom:8px;" onclick="MUS.App.exportBackup()">💾 Backup Data (Download)</button>
+          <button class="btn-gold" style="margin-bottom:8px;" onclick="MUS.App.exportBackup()">💾 Backup Data (Save to Drive)</button>
+          <div style="font-size:11px;color:#8a8270;margin-bottom:10px;">Opens your share menu — pick <b>Drive</b> to save it there. Falls back to a normal download if sharing isn't available.</div>
           <input type="file" id="restoreFileInput" accept="application/json" style="display:none;" onchange="MUS.App.importBackup(this.files[0])">
           <button class="btn-primary" onclick="document.getElementById('restoreFileInput').click()">📂 Restore from Backup</button>
         </div>
@@ -2096,26 +2112,54 @@ MUS.App = (function () {
   }
 
   /* ---------------- Backup & Restore ---------------- */
-  function exportBackup() {
-    try {
-      const dataStr = JSON.stringify(state, null, 2);
-      const blob = new Blob([dataStr], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `mus-backup-${MUS.Utils.todayStr()}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      setTimeout(() => URL.revokeObjectURL(url), 3000);
+  async function exportBackup() {
+    const dataStr = JSON.stringify(state, null, 2);
+    const filename = `mus-backup-${MUS.Utils.todayStr()}.json`;
+    const blob = new Blob([dataStr], { type: "application/json" });
 
-      state.lastBackupAt = MUS.Utils.todayStr();
-      saveState();
-      closeModal();
-      alert("Backup downloaded! Keep this file safe (e.g. save it to Google Drive or WhatsApp it to yourself).");
+    // Prefer the native share sheet so the person can pick "Drive" and
+    // save the backup straight into Google Drive with one tap. Falls
+    // back to a plain file download if the browser can't share files.
+    let sharedToDrive = false;
+    try {
+      const file = new File([blob], filename, { type: "application/json" });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({
+          files: [file],
+          title: "Mass Uniform Store Backup",
+          text: `Backup from ${MUS.Utils.todayStr()} — save this to Google Drive.`,
+        });
+        sharedToDrive = true;
+      }
     } catch (err) {
-      console.error("Backup failed:", err);
-      alert("Backup failed: " + err.message);
+      // User cancelled the share sheet, or share isn't supported — fall
+      // through to a normal download instead of treating this as fatal.
+      if (err && err.name === "AbortError") { return; }
+      console.error("Share failed, falling back to download:", err);
+    }
+
+    if (!sharedToDrive) {
+      try {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 3000);
+      } catch (err) {
+        console.error("Backup failed:", err);
+        alert("Backup failed: " + err.message);
+        return;
+      }
+    }
+
+    state.lastBackupAt = MUS.Utils.todayStr();
+    saveState();
+    closeModal();
+    if (!sharedToDrive) {
+      alert("Backup downloaded! Keep this file safe (e.g. save it to Google Drive or WhatsApp it to yourself).");
     }
   }
 
