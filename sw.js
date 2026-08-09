@@ -1,13 +1,6 @@
-// Offline-cache service worker for Mass Uniform Store.
-// NETWORK-FIRST strategy: always tries to fetch the latest version from
-// the server first, and only falls back to the cached copy if there's
-// no internet. This matters a lot for an app that's still being updated
-// often — a cache-first strategy would keep showing old versions forever
-// even after a fresh deploy, since the cache never gets invalidated on
-// its own.
-//
-// CACHE_NAME is bumped on every deploy so the old cache is discarded and
-// replaced during the "activate" step below.
+// Minimal offline-cache service worker for Mass Uniform Store.
+// Caches the app shell on install so it keeps working with no internet,
+// and is required (along with HTTPS) for Chrome's "Install app" prompt.
 const CACHE_NAME = "mus-ledger-v2";
 const APP_SHELL = ["./", "./index.html"];
 
@@ -29,12 +22,17 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   event.respondWith(
-    fetch(event.request)
-      .then((response) => {
-        const copy = response.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
-        return response;
-      })
-      .catch(() => caches.match(event.request))
+    caches.match(event.request).then((cached) => {
+      return (
+        cached ||
+        fetch(event.request)
+          .then((response) => {
+            const copy = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+            return response;
+          })
+          .catch(() => cached)
+      );
+    })
   );
 });

@@ -1,54 +1,32 @@
 {
-  "name": "வேலை நினைவூட்டல் - Task Reminder",
-  "short_name": "Task Reminder",
-  "description": "Production Ready Tamil + English Task Management PWA",
-  "start_url": "./tamil-reminder-v2-production.html",
+  "name": "Mass Uniform Store",
+  "short_name": "MUS",
+  "description": "Mass Uniform Store Billing & Ledger",
+  "start_url": "./",
   "scope": "./",
+  "id": "./",
   "display": "standalone",
-  "orientation": "portrait-primary",
-  "theme_color": "#8B5CF6",
-  "background_color": "#FFFFFF",
+  "background_color": "#F3EFE3",
+  "theme_color": "#1C2B3A",
+  "orientation": "portrait",
   "icons": [
     {
-      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect fill='%238B5CF6' width='192' height='192' rx='45'/><text x='50%' y='50%' font-size='100' fill='white' text-anchor='middle' dominant-baseline='middle'>📋</text></svg>",
+      "src": "./icon-192.png",
       "sizes": "192x192",
-      "type": "image/svg+xml",
+      "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "icon-192x192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "icon-512x512.png",
+      "src": "./icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "icon-192x192-maskable.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "maskable"
-    },
-    {
-      "src": "icon-512x512-maskable.png",
+      "src": "./maskable-icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
     }
-  ],
-  "categories": ["productivity"],
-  "screenshots": [
-    {
-      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect fill='%238B5CF6' width='192' height='192'/><text x='50%' y='50%' font-size='60' fill='white' text-anchor='middle' dominant-baseline='middle'>📋</text></svg>",
-      "sizes": "192x192",
-      "type": "image/svg+xml",
-      "form_factor": "narrow"
-    }
-  ],
-  "prefer_related_applications": false
+  ]
 }
-
