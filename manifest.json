@@ -1,32 +1,16 @@
 {
   "name": "Mass Uniform Store",
-  "short_name": "MUS",
-  "description": "Mass Uniform Store Billing & Ledger",
-  "id": "/MASS-POLICE-STORE/",
-  "start_url": "/MASS-POLICE-STORE/?source=pwa",
-  "scope": "/MASS-POLICE-STORE/",
+  "short_name": "MUS Ledger",
+  "description": "Mass Uniform Store — daily accounts, billing, stock and customer ledger.",
+  "start_url": "./index.html",
+  "scope": "./",
   "display": "standalone",
   "background_color": "#F3EFE3",
   "theme_color": "#1C2B3A",
-  "orientation": "portrait-primary",
+  "orientation": "portrait",
   "icons": [
-    {
-      "src": "/MASS-POLICE-STORE/icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "/MASS-POLICE-STORE/icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "/MASS-POLICE-STORE/maskable-icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "maskable"
-    }
+    { "src": "./icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "./icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "./maskable-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ]
 }
