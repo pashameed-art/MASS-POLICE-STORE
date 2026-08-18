@@ -1,4 +1,6 @@
-MASS UNIFORM STORE V4.1
-Replace the repository root files with all files in this ZIP.
-V4.1 adds Backup History (last 25) and a safety backup before history restore.
-Existing localStorage key/data structure is preserved.
+MASS UNIFORM STORE — V4.1 PWA FINAL
+
+Replace all 7 repository-root files with the files in this ZIP.
+The Install App button is always visible. If Chrome does not expose the
+install prompt, it gives the Chrome menu fallback. Backup History is preserved.
+Existing localStorage data structure is preserved.
