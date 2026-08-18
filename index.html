@@ -1947,6 +1947,9 @@ MUS.Dashboard = (function () {
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;">
           <button class="btn-primary" onclick="MUS.V5.openStockHistory()">📦 Stock History</button>
           <button class="btn-primary" onclick="MUS.V5.openCustomerList()">👤 Customer Ledger</button>
+          <button class="btn-primary" onclick="MUS.V51.openBillSearch()">🧾 Bill Search</button>
+          <button class="btn-primary" onclick="MUS.V51.openExport()">📊 Export</button>
+          <button class="btn-primary" onclick="MUS.V51.profitSummary()">💰 Profit Summary</button>
         </div>
       </div>`;
   }
@@ -2188,6 +2191,220 @@ MUS.V5 = (function () {
   }
 
   return { openStockHistory, openCustomerList, openCustomerLedger, filterCustomers };
+})();
+
+
+
+/* ===== V5.1: Bill Search + CSV Export + Profit Summary ===== */
+window.MUS = window.MUS || {};
+MUS.V51 = (function () {
+  const esc = MUS.Utils.esc;
+  const money = MUS.Utils.money;
+  const fmtDate = MUS.Utils.fmtDate;
+
+  function csvCell(v) {
+    const s = String(v ?? "");
+    return '"' + s.replace(/"/g, '""') + '"';
+  }
+  function downloadCSV(filename, rows) {
+    const csv = rows.map(r => r.map(csvCell).join(",")).join("\r\n");
+    const blob = new Blob(["\ufeff" + csv], {type:"text/csv;charset=utf-8"});
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+
+  function bills() {
+    return (MUS.App.state.invoices || []).slice().sort((a,b) =>
+      String(b.date || "").localeCompare(String(a.date || ""))
+    );
+  }
+
+  function openBillSearch() {
+    const rows = renderBills("");
+    MUS.App.openModal(`
+      <div class="modal-overlay" onclick="MUS.App.closeModal()">
+        <div class="modal-sheet" onclick="event.stopPropagation()">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+            <div class="stencil" style="font-size:13px;font-weight:700;">🧾 Bill Search</div>
+            <button onclick="MUS.App.closeModal()" style="background:none;border:none;font-size:18px;">✕</button>
+          </div>
+          <input id="v51BillSearch" class="field-input" placeholder="Bill No / Customer / Mobile / Date / Amount"
+                 oninput="MUS.V51.filterBills(this.value)" style="margin-bottom:10px;">
+          <div id="v51BillList">${rows}</div>
+          <div style="display:flex;gap:8px;margin-top:10px;">
+            <button class="btn-gold" style="flex:1;" onclick="MUS.V51.exportBillsCSV()">📊 Export Bills</button>
+            <button class="btn-primary" style="flex:1;" onclick="MUS.App.closeModal()">Done</button>
+          </div>
+        </div>
+      </div>`);
+  }
+
+  function renderBills(query) {
+    const q = (query || "").trim().toLowerCase();
+    const list = bills().filter(i => {
+      if (!q) return true;
+      return [
+        i.invoiceNo, i.customer, i.mobile, i.date, i.total, i.receivedAmount, i.balance
+      ].some(v => String(v ?? "").toLowerCase().includes(q));
+    });
+    if (!list.length) return `<div style="text-align:center;color:#9a9280;padding:25px;">No matching bills.</div>`;
+    return list.map(i => `
+      <div class="card" style="margin-bottom:8px;">
+        <div style="display:flex;justify-content:space-between;gap:8px;">
+          <div>
+            <div style="font-size:13px;font-weight:800;">${esc(i.invoiceNo || "Bill")}</div>
+            <div style="font-size:11px;color:#8a8270;">${esc(i.customer || "Walk-in")} · ${fmtDate(i.date || "")}</div>
+          </div>
+          <div style="text-align:right;">
+            <div style="font-weight:800;">${money(Number(i.total)||0)}</div>
+            ${Number(i.balance) > 0 ? `<div style="font-size:10px;color:#8B3A2E;">Pending ${money(Number(i.balance)||0)}</div>` : `<div style="font-size:10px;color:#4A5D3A;">Paid</div>`}
+          </div>
+        </div>
+      </div>`).join("");
+  }
+
+  function filterBills(q) {
+    const box = document.getElementById("v51BillList");
+    if (box) box.innerHTML = renderBills(q);
+  }
+
+  function exportBillsCSV() {
+    const rows = [["Date","Bill No","Customer","Mobile","Total","Received","Balance"]];
+    bills().forEach(i => rows.push([
+      i.date || "", i.invoiceNo || "", i.customer || "", i.mobile || "",
+      Number(i.total)||0, Number(i.receivedAmount)||0, Number(i.balance)||0
+    ]));
+    downloadCSV("mass-uniform-store-bills.csv", rows);
+  }
+
+  function exportStockCSV() {
+    const state = MUS.App.state;
+    const rows = [["Product","Shade","Stock","Unit","Sale Rate","Purchase Rate"]];
+    (state.products || []).forEach(p => {
+      if ((p.shades || []).length) {
+        p.shades.forEach(s => rows.push([
+          p.productName || "", s.shadeNo || "", Number(s.stock)||0, p.unit || "",
+          Number(s.saleRate)||0, Number(s.purchaseRate)||0
+        ]));
+      } else {
+        rows.push([p.productName || "", "", Number(p.stock)||0, p.unit || "",
+          Number(p.saleRate)||0, Number(p.purchaseRate)||0]);
+      }
+    });
+    downloadCSV("mass-uniform-store-stock.csv", rows);
+  }
+
+  function exportCustomersCSV() {
+    const state = MUS.App.state;
+    const rows = [["Customer","Mobile","Total Bills","Received","Pending"]];
+    (MUS.Customers.list(state) || []).forEach(c => {
+      const inv = (state.invoices || []).filter(i => String(i.customer||"").toLowerCase() === String(c.name||"").toLowerCase());
+      const total = inv.reduce((n,i)=>n+(Number(i.total)||0),0);
+      const received = inv.reduce((n,i)=>n+(Number(i.receivedAmount)||0),0);
+      const pending = inv.reduce((n,i)=>n+(Number(i.balance)>0?Number(i.balance):0),0);
+      rows.push([c.name||"", c.mobile||"", inv.length, received, pending]);
+    });
+    downloadCSV("mass-uniform-store-customers.csv", rows);
+  }
+
+  function openExport() {
+    MUS.App.openModal(`
+      <div class="modal-overlay" onclick="MUS.App.closeModal()">
+        <div class="modal-sheet" onclick="event.stopPropagation()">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+            <div class="stencil" style="font-size:13px;font-weight:700;">📊 Export Data</div>
+            <button onclick="MUS.App.closeModal()" style="background:none;border:none;font-size:18px;">✕</button>
+          </div>
+          <button class="btn-primary" style="width:100%;margin-bottom:8px;" onclick="MUS.V51.exportBillsCSV()">🧾 Export Bills CSV</button>
+          <button class="btn-primary" style="width:100%;margin-bottom:8px;" onclick="MUS.V51.exportStockCSV()">📦 Export Stock CSV</button>
+          <button class="btn-primary" style="width:100%;margin-bottom:8px;" onclick="MUS.V51.exportCustomersCSV()">👤 Export Customers CSV</button>
+          <button class="btn-primary" style="width:100%;" onclick="MUS.App.closeModal()">Done</button>
+        </div>
+      </div>`);
+  }
+
+  function profitSummary() {
+    const state = MUS.App.state;
+    const inv = state.invoices || [];
+    const sales = inv.reduce((n,i)=>n+(Number(i.total)||0),0);
+    const received = inv.reduce((n,i)=>n+(Number(i.receivedAmount)||0),0);
+    const pending = inv.reduce((n,i)=>n+(Number(i.balance)>0?Number(i.balance):0),0);
+    let gross = 0;
+    inv.forEach(i => {
+      if (Array.isArray(i.items)) i.items.forEach(it => {
+        const qty = Number(it.qty)||0;
+        const sale = Number(it.rate ?? it.saleRate ?? it.price)||0;
+        const cost = Number(it.purchaseRate ?? it.costRate ?? it.cost)||0;
+        gross += qty * (sale - cost);
+      });
+    });
+    const expenses = (state.entries || []).filter(e => String(e.type||"").toLowerCase().includes("expense"))
+      .reduce((n,e)=>n+(Number(e.amount)||0),0);
+    const net = gross - expenses;
+    MUS.App.openModal(`
+      <div class="modal-overlay" onclick="MUS.App.closeModal()">
+        <div class="modal-sheet" onclick="event.stopPropagation()">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+            <div class="stencil" style="font-size:13px;font-weight:700;">💰 Profit Summary</div>
+            <button onclick="MUS.App.closeModal()" style="background:none;border:none;font-size:18px;">✕</button>
+          </div>
+          <div class="grid2">
+            <div class="card"><div style="font-size:10px;color:#6b6455;">Sales</div><b>${money(sales)}</b></div>
+            <div class="card"><div style="font-size:10px;color:#6b6455;">Received</div><b>${money(received)}</b></div>
+            <div class="card"><div style="font-size:10px;color:#6b6455;">Pending</div><b>${money(pending)}</b></div>
+            <div class="card"><div style="font-size:10px;color:#6b6455;">Gross Profit</div><b>${money(gross)}</b></div>
+            <div class="card"><div style="font-size:10px;color:#6b6455;">Expenses</div><b>${money(expenses)}</b></div>
+            <div class="card"><div style="font-size:10px;color:#6b6455;">Net Profit</div><b>${money(net)}</b></div>
+          </div>
+          <div style="font-size:11px;color:#8a8270;margin:12px 0;">Profit uses purchase-rate snapshots where the invoice item contains a purchase/cost rate. Existing reports remain unchanged.</div>
+          <button class="btn-primary" onclick="MUS.App.closeModal()">Done</button>
+        </div>
+      </div>`);
+  }
+
+  return { openBillSearch, filterBills, exportBillsCSV, exportStockCSV, exportCustomersCSV, openExport, profitSummary };
+})();
+
+
+
+/* ===== V5.2: About App ===== */
+window.MUS = window.MUS || {};
+MUS.V52 = (function () {
+  function openAbout() {
+    MUS.App.openModal(`
+      <div class="modal-overlay" onclick="MUS.App.closeModal()">
+        <div class="modal-sheet" onclick="event.stopPropagation()">
+          <div style="text-align:center;padding:8px 0 14px;">
+            <img src="./icon-192.png" alt="Mass Uniform Store" style="width:72px;height:72px;border-radius:16px;margin-bottom:8px;">
+            <div class="stencil" style="font-size:14px;font-weight:800;">MASS UNIFORM STORE</div>
+            <div style="font-size:20px;font-weight:900;margin-top:4px;">Version V5.2</div>
+            <div style="font-size:11px;color:#8a8270;margin-top:4px;">Business Billing & Ledger</div>
+          </div>
+          <div class="card" style="margin-bottom:10px;">
+            <div style="font-size:12px;font-weight:800;margin-bottom:8px;">Features</div>
+            <div style="font-size:12px;line-height:1.9;">
+              ✓ Sales & Invoice<br>
+              ✓ Purchase & Stock Management<br>
+              ✓ Stock History<br>
+              ✓ Customer Ledger<br>
+              ✓ Bill Search<br>
+              ✓ Profit Summary<br>
+              ✓ CSV Export<br>
+              ✓ Backup & Restore<br>
+              ✓ PWA Support
+            </div>
+          </div>
+          <div style="text-align:center;font-size:10px;color:#8a8270;margin:12px 0;">
+            © Mass Uniform Store
+          </div>
+          <button class="btn-primary" onclick="MUS.App.closeModal()">Done</button>
+        </div>
+      </div>`);
+  }
+  return { openAbout };
 })();
 
 

@@ -13,7 +13,7 @@
 // All paths are relative ("./…"), so this works correctly whether the
 // app is served at a domain root or under a GitHub Pages project path
 // like /uniform-ledger/ — nothing here is hardcoded to a specific host.
-const CACHE_NAME = "mus-ledger-v5";
+const CACHE_NAME = "mus-ledger-v5-2";
 const APP_SHELL = [
   "./",
   "./index.html",

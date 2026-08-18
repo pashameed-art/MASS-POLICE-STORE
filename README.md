@@ -1,9 +1,15 @@
-MASS UNIFORM STORE — V5
+MASS UNIFORM STORE — V5.2 FINAL
 
-New:
+Includes:
 - Stock History
 - Customer Ledger
+- Bill Search
+- CSV Export
+- Profit Summary
+- Backup History
+- PWA Support
+- About App / Version V5.2
 
-Existing PWA, Backup History, Backup/Restore, sales, purchases, products and customers are preserved.
-Existing localStorage key is preserved. stockHistory is a new optional array; existing data remains valid.
 Replace all 7 repository-root files with the files in this ZIP.
+Do not replace your JSON business backup.
+Existing localStorage data structure is preserved.
