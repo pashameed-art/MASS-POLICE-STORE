@@ -1,6 +1,9 @@
-MASS UNIFORM STORE — V4.1 PWA FINAL
+MASS UNIFORM STORE — V5
 
+New:
+- Stock History
+- Customer Ledger
+
+Existing PWA, Backup History, Backup/Restore, sales, purchases, products and customers are preserved.
+Existing localStorage key is preserved. stockHistory is a new optional array; existing data remains valid.
 Replace all 7 repository-root files with the files in this ZIP.
-The Install App button is always visible. If Chrome does not expose the
-install prompt, it gives the Chrome menu fallback. Backup History is preserved.
-Existing localStorage data structure is preserved.

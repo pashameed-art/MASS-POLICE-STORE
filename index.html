@@ -207,6 +207,7 @@ MUS.Storage = (function () {
       shopInfo: { name: "Mass Uniform Store", address: "Indra Nagar, Kadayanallur – 627751", phone: "9042321452" },
       products: defaultProducts(),
       customers: [],
+      stockHistory: [],
       lastBackupAt: null,
     };
   }
@@ -387,12 +388,36 @@ MUS.Products = (function () {
   function adjustStock(state, productId, shadeId, deltaQty) {
     const p = getById(state, productId);
     if (!p) return;
+    let before = 0, after = 0, shadeNo = "";
     if (shadeId) {
-      const s = p.shades.find((sh) => sh.id === shadeId);
-      if (s) s.stock = Math.max(0, (parseFloat(s.stock) || 0) + deltaQty);
+      const s = (p.shades || []).find((sh) => sh.id === shadeId);
+      if (s) {
+        before = parseFloat(s.stock) || 0;
+        s.stock = Math.max(0, before + deltaQty);
+        after = s.stock;
+        shadeNo = s.shadeNo || "";
+      }
     } else {
-      p.stock = Math.max(0, (parseFloat(p.stock) || 0) + deltaQty);
+      before = parseFloat(p.stock) || 0;
+      p.stock = Math.max(0, before + deltaQty);
+      after = p.stock;
     }
+    state.stockHistory = state.stockHistory || [];
+    state.stockHistory.unshift({
+      id: uid(),
+      date: MUS.Utils.todayStr(),
+      time: new Date().toISOString(),
+      productId: p.id,
+      productName: p.productName,
+      shadeId: shadeId || null,
+      shadeNo,
+      qty: deltaQty,
+      before,
+      after,
+      type: deltaQty >= 0 ? "IN" : "OUT",
+      source: deltaQty >= 0 ? "Purchase / Stock In" : "Sale / Stock Out"
+    });
+    if (state.stockHistory.length > 500) state.stockHistory.length = 500;
   }
 
   /* ------------------------------------------------------------------
@@ -1919,6 +1944,10 @@ MUS.Dashboard = (function () {
         ${lowStockHtml}
 
         <button class="btn-primary" onclick="MUS.Dashboard.openReports()" style="margin-top:6px;">📈 View Reports</button>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;">
+          <button class="btn-primary" onclick="MUS.V5.openStockHistory()">📦 Stock History</button>
+          <button class="btn-primary" onclick="MUS.V5.openCustomerList()">👤 Customer Ledger</button>
+        </div>
       </div>`;
   }
 
@@ -2009,6 +2038,157 @@ MUS.Dashboard = (function () {
   };
 })();
 
+
+
+
+/* ===== V5: Stock History + Customer Ledger ===== */
+window.MUS = window.MUS || {};
+
+MUS.V5 = (function () {
+  const { esc, money, fmtDate } = MUS.Utils;
+
+  function openStockHistory() {
+    const state = MUS.App.state;
+    const history = (state.stockHistory || []).slice(0, 200);
+    const rows = history.length ? history.map((h) => {
+      const sign = h.qty >= 0 ? "+" : "";
+      const color = h.qty >= 0 ? "#4A5D3A" : "#8B3A2E";
+      return `<div class="card" style="margin-bottom:8px;">
+        <div style="display:flex;justify-content:space-between;gap:8px;">
+          <div style="min-width:0;">
+            <div style="font-size:13px;font-weight:800;">${esc(h.productName)}${h.shadeNo ? ` · Shade ${esc(h.shadeNo)}` : ""}</div>
+            <div style="font-size:11px;color:#8a8270;margin-top:3px;">${fmtDate(h.date)} · ${new Date(h.time || h.date).toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"})}</div>
+            <div style="font-size:11px;color:#8a8270;margin-top:2px;">${esc(h.source || "Stock adjustment")}</div>
+          </div>
+          <div style="text-align:right;white-space:nowrap;">
+            <div style="font-size:15px;font-weight:800;color:${color};">${sign}${h.qty}</div>
+            <div style="font-size:10px;color:#8a8270;">${h.before} → ${h.after}</div>
+          </div>
+        </div>
+      </div>`;
+    }).join("") : `<div style="text-align:center;color:#9a9280;padding:30px 10px;font-size:13px;">No stock movements recorded yet.</div>`;
+
+    MUS.App.openModal(`
+      <div class="modal-overlay" onclick="MUS.App.closeModal()">
+        <div class="modal-sheet" onclick="event.stopPropagation()">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+            <div class="stencil" style="font-size:13px;font-weight:700;">📦 Stock History</div>
+            <button onclick="MUS.App.closeModal()" style="background:none;border:none;font-size:18px;">✕</button>
+          </div>
+          <div class="card" style="margin-bottom:10px;font-size:12px;color:#6b6455;">
+            Shows stock IN/OUT movements from the V5 update onward. Existing stock is not changed.
+          </div>
+          ${rows}
+          <button class="btn-primary" onclick="MUS.App.closeModal()">Done</button>
+        </div>
+      </div>`);
+  }
+
+  function customerSummary(state, name) {
+    const entries = (state.entries || []).filter(e => (e.customer || "").trim().toLowerCase() === name.trim().toLowerCase());
+    const invoices = (state.invoices || []).filter(i => (i.customer || "").trim().toLowerCase() === name.trim().toLowerCase());
+    let sale = 0, received = 0, balance = 0;
+    invoices.forEach(i => {
+      sale += Number(i.total) || 0;
+      received += Number(i.receivedAmount) || 0;
+      balance += Number(i.balance) > 0 ? Number(i.balance) : 0;
+    });
+    const payments = entries.filter(e => ["payment","creditPaid","received","customerPayment"].includes(e.type));
+    payments.forEach(e => { received += Number(e.amount) || 0; });
+    return { entries, invoices, sale, received, balance };
+  }
+
+  function openCustomerLedger(customerId) {
+    const state = MUS.App.state;
+    const c = MUS.Customers.getById(state, customerId);
+    if (!c) return;
+    const s = customerSummary(state, c.name);
+    const items = [
+      ...s.invoices.map(i => ({date:i.date, type:"Bill", ref:i.invoiceNo || "", amount:Number(i.total)||0, received:Number(i.receivedAmount)||0, balance:Number(i.balance)||0})),
+      ...s.entries.filter(e => e.type !== "sale" && !String(e.note||"").includes("Balance due on ")).map(e => ({
+        date:e.date, type:e.type, ref:e.note || "", amount:Number(e.amount)||0, received:0, balance:0
+      }))
+    ].sort((a,b)=>String(b.date).localeCompare(String(a.date)));
+
+    const rows = items.length ? items.map(x => `
+      <div class="card" style="margin-bottom:8px;">
+        <div style="display:flex;justify-content:space-between;gap:8px;">
+          <div>
+            <div style="font-size:13px;font-weight:800;">${esc(x.type)} ${x.ref ? "· "+esc(x.ref) : ""}</div>
+            <div style="font-size:11px;color:#8a8270;margin-top:3px;">${fmtDate(x.date)}</div>
+          </div>
+          <div style="text-align:right;">
+            <div style="font-size:13px;font-weight:800;">${money(x.amount)}</div>
+            ${x.received ? `<div style="font-size:10px;color:#4A5D3A;">Received ${money(x.received)}</div>` : ""}
+            ${x.balance > 0 ? `<div style="font-size:10px;color:#8B3A2E;">Balance ${money(x.balance)}</div>` : ""}
+          </div>
+        </div>
+      </div>`).join("") : `<div style="text-align:center;color:#9a9280;padding:25px 10px;">No transactions found.</div>`;
+
+    MUS.App.openModal(`
+      <div class="modal-overlay" onclick="MUS.App.closeModal()">
+        <div class="modal-sheet" onclick="event.stopPropagation()">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+            <div><div class="stencil" style="font-size:13px;font-weight:700;">👤 Customer Ledger</div><div style="font-size:16px;font-weight:800;margin-top:3px;">${esc(c.name)}</div></div>
+            <button onclick="MUS.App.closeModal()" style="background:none;border:none;font-size:18px;">✕</button>
+          </div>
+          <div class="grid2" style="margin-bottom:12px;">
+            <div class="card"><div style="font-size:10px;color:#6b6455;">Total Bills</div><b>${money(s.sale)}</b></div>
+            <div class="card"><div style="font-size:10px;color:#6b6455;">Received</div><b style="color:#4A5D3A;">${money(s.received)}</b></div>
+            <div class="card"><div style="font-size:10px;color:#6b6455;">Pending</div><b style="color:#8B3A2E;">${money(s.balance)}</b></div>
+            <div class="card"><div style="font-size:10px;color:#6b6455;">Mobile</div><b>${esc(c.mobile || "—")}</b></div>
+          </div>
+          ${rows}
+          <button class="btn-primary" onclick="MUS.App.closeModal()">Done</button>
+        </div>
+      </div>`);
+  }
+
+  function openCustomerList() {
+    const state = MUS.App.state;
+    const customers = MUS.Customers.list(state);
+    const rows = customers.length ? customers.map(c => {
+      const s = customerSummary(state, c.name);
+      return `<button onclick="MUS.V5.openCustomerLedger('${c.id}')" style="width:100%;text-align:left;border:1px solid var(--border);background:#fff;border-radius:10px;padding:11px;margin-bottom:8px;">
+        <div style="display:flex;justify-content:space-between;gap:8px;">
+          <div><div style="font-size:13px;font-weight:800;">${esc(c.name)}</div><div style="font-size:11px;color:#8a8270;">${esc(c.mobile || "No mobile")}</div></div>
+          <div style="text-align:right;"><div style="font-size:13px;font-weight:800;color:#8B3A2E;">${money(s.balance)}</div><div style="font-size:10px;color:#8a8270;">Pending</div></div>
+        </div>
+      </button>`;
+    }).join("") : `<div style="text-align:center;color:#9a9280;padding:30px 10px;">No customers yet.</div>`;
+
+    MUS.App.openModal(`
+      <div class="modal-overlay" onclick="MUS.App.closeModal()">
+        <div class="modal-sheet" onclick="event.stopPropagation()">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+            <div class="stencil" style="font-size:13px;font-weight:700;">👤 Customer Ledger</div>
+            <button onclick="MUS.App.closeModal()" style="background:none;border:none;font-size:18px;">✕</button>
+          </div>
+          <input class="field-input" placeholder="Search customer..." oninput="MUS.V5.filterCustomers(this.value)" id="v5CustomerSearch" style="margin-bottom:10px;">
+          <div id="v5CustomerList">${rows}</div>
+          <button class="btn-primary" onclick="MUS.App.closeModal()">Done</button>
+        </div>
+      </div>`);
+  }
+
+  function filterCustomers(q) {
+    const state = MUS.App.state;
+    const box = document.getElementById("v5CustomerList");
+    if (!box) return;
+    const term = (q||"").trim().toLowerCase();
+    const rows = MUS.Customers.list(state).filter(c =>
+      !term || c.name.toLowerCase().includes(term) || (c.mobile||"").includes(term)
+    );
+    box.innerHTML = rows.length ? rows.map(c => {
+      const s = customerSummary(state,c.name);
+      return `<button onclick="MUS.V5.openCustomerLedger('${c.id}')" style="width:100%;text-align:left;border:1px solid var(--border);background:#fff;border-radius:10px;padding:11px;margin-bottom:8px;">
+        <div style="display:flex;justify-content:space-between;gap:8px;"><div><div style="font-size:13px;font-weight:800;">${esc(c.name)}</div><div style="font-size:11px;color:#8a8270;">${esc(c.mobile||"No mobile")}</div></div><div style="text-align:right;"><div style="font-size:13px;font-weight:800;color:#8B3A2E;">${money(s.balance)}</div><div style="font-size:10px;color:#8a8270;">Pending</div></div></div>
+      </button>`;
+    }).join("") : `<div style="text-align:center;color:#9a9280;padding:25px;">No matching customers.</div>`;
+  }
+
+  return { openStockHistory, openCustomerList, openCustomerLedger, filterCustomers };
+})();
 
 
 /* ===== app.js ===== */
