@@ -2296,6 +2296,49 @@ document.addEventListener("DOMContentLoaded", MUS.App.init);
 
 </script>
 <script>
+/* ===== V4.1 Backup History + Safety Restore ===== */
+(function(){
+  const KEY="musBackupHistory_v1", MAX=25;
+  const read=()=>{try{return JSON.parse(localStorage.getItem(KEY)||"[]")}catch(e){return[]}};
+  const write=a=>localStorage.setItem(KEY,JSON.stringify(a.slice(0,MAX)));
+  const esc=s=>MUS.Utils.esc(s);
+  function add(label,data){const a=read();a.unshift({id:Date.now().toString(36),time:new Date().toISOString(),label,data});write(a)}
+  function current(){try{return JSON.stringify(MUS.App.state,null,2)}catch(e){return null}}
+  function backupNow(){
+    const data=current(); if(!data)return alert("Backup failed.");
+    add("Manual backup",data);
+    const stamp=new Date().toISOString().replace(/[:.]/g,"-");
+    const blob=new Blob([data],{type:"application/json"}), a=document.createElement("a");
+    a.href=URL.createObjectURL(blob);a.download="mass-uniform-store-"+stamp+".json";
+    document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+    alert("Backup created and saved to Backup History.");
+  }
+  function restore(i){
+    const a=read(),x=a[i]; if(!x)return;
+    if(!confirm("Restore this backup? A safety backup will be created first."))return;
+    const now=current(); if(now)add("Automatic safety backup",now);
+    try{
+      const data=JSON.parse(x.data);
+      localStorage.setItem(MUS.Storage.STORAGE_KEY,JSON.stringify(data));
+      alert("Backup restored. The app will reload."); location.reload();
+    }catch(e){alert("Restore failed: "+e.message)}
+  }
+  function open(){
+    const a=read();
+    const rows=a.length?a.map((x,i)=>`<div class="card" style="margin-bottom:8px;"><b>${esc(x.label)}</b><div style="font-size:11px;color:#8a8270;margin:4px 0 8px;">${new Date(x.time).toLocaleString("en-IN")}</div><button class="btn-primary" style="padding:9px;font-size:12px;" onclick="MUS.V41.restore(${i})">Restore this backup</button></div>`).join(""):'<div style="text-align:center;color:#8a8270;padding:20px;">No backup history yet.</div>';
+    MUS.App.openModal(`<div class="modal-overlay" onclick="MUS.App.closeModal()"><div class="modal-sheet" onclick="event.stopPropagation()"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;"><div class="stencil" style="font-size:13px;font-weight:700;">📜 Backup History</div><button onclick="MUS.App.closeModal()" style="background:none;border:none;font-size:18px;">✕</button></div><button class="btn-gold" style="margin-bottom:12px;" onclick="MUS.V41.backupNow()">💾 Backup Now</button>${rows}<button class="btn-primary" onclick="MUS.App.closeModal()">Done</button></div></div>`);
+  }
+  window.MUS=window.MUS||{}; MUS.V41={open,backupNow,restore,read};
+  window.addEventListener("load",()=>{
+    const s=document.querySelector('button[onclick="MUS.App.openShopSettings()"]');
+    if(s&&!document.getElementById("backupHistoryBtn")){
+      const b=document.createElement("button");b.id="backupHistoryBtn";b.textContent="📜";b.title="Backup History";b.onclick=open;b.style.cssText=s.style.cssText;s.parentNode.insertBefore(b,s);
+    }
+  });
+})();
+</script>
+
+<script>
   if ("serviceWorker" in navigator) {
     window.addEventListener("load", () => {
       navigator.serviceWorker.register("./sw.js").catch((err) => console.error("SW registration failed:", err));
